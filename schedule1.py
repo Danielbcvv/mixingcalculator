@@ -260,6 +260,7 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
     """
     Aplica os efeitos dos itens selecionados na ordem correta e retorna
     o conjunto final de efeitos ativos e seus multiplicadores.
+    Com limite de 8 efeitos simultâneos.
     
     Args:
         selected_items: Lista de itens na ordem em que serão aplicados
@@ -267,14 +268,22 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
     """
     # Inicializa com os efeitos iniciais, se fornecidos
     active_effects = initial_effects.copy() if initial_effects else {}
+    MAX_EFFECTS = 8  # Limite máximo de efeitos simultâneos
     
     for item_name in selected_items:
-        # Adiciona o efeito do item
+        # Adiciona o efeito do item apenas se ainda não alcançamos o limite de efeitos
         item = items[item_name]
         effect = item["effect"]
-        active_effects[effect] = effect_multipliers[effect]
         
-        # Aplica as regras de modificação
+        # Se já temos 8 efeitos e este efeito não está entre eles, não adicionamos
+        if len(active_effects) >= MAX_EFFECTS and effect not in active_effects:
+            # Não adiciona o efeito, mas ainda aplica as regras de transformação
+            pass
+        else:
+            # Adiciona o efeito normalmente
+            active_effects[effect] = effect_multipliers[effect]
+        
+        # Aplica as regras de modificação (isso acontece independentemente de ter adicionado o efeito)
         effects_to_change = {}
         for current_effect, new_effect in item["rules"].items():
             # Não aplicar a regra ao próprio efeito que acabamos de adicionar
@@ -285,6 +294,59 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
         for old_effect, new_effect in effects_to_change.items():
             del active_effects[old_effect]
             active_effects[new_effect] = effect_multipliers[new_effect]
+    
+    return active_effects
+
+def debug_apply_item_effects(selected_items: List[str], initial_effects: Dict[str, float] = None) -> Dict[str, float]:
+    """
+    Versão detalhada da função apply_item_effects que imprime cada passo do processo.
+    Com limite de 8 efeitos simultâneos.
+    """
+    # Inicializa com os efeitos iniciais, se fornecidos
+    active_effects = initial_effects.copy() if initial_effects else {}
+    MAX_EFFECTS = 8  # Limite máximo de efeitos simultâneos
+    
+    print(f"Efeitos iniciais: {active_effects}")
+    
+    for i, item_name in enumerate(selected_items, 1):
+        print(f"\nPasso {i}: Aplicando item '{item_name}'")
+        item = items[item_name]
+        effect = item["effect"]
+        
+        # Verifica se já atingimos o limite de efeitos
+        if len(active_effects) >= MAX_EFFECTS and effect not in active_effects:
+            print(f"  Limite de {MAX_EFFECTS} efeitos atingido! O efeito {effect} não será adicionado.")
+            print(f"  Efeitos atuais: {active_effects}")
+        else:
+            print(f"  Adicionando efeito: {effect} (+{effect_multipliers[effect]})")
+            active_effects[effect] = effect_multipliers[effect]
+            print(f"  Efeitos após adicionar {effect}: {active_effects}")
+        
+        # Identifica quais regras serão aplicadas
+        effects_to_change = {}
+        print("  Verificando regras de modificação:")
+        for current_effect, new_effect in item["rules"].items():
+            if current_effect in active_effects and current_effect != effect:
+                print(f"    Regra ativa: {current_effect} -> {new_effect}")
+                effects_to_change[current_effect] = new_effect
+            else:
+                if current_effect not in active_effects:
+                    print(f"    Regra ignorada (efeito não presente): {current_effect} -> {new_effect}")
+                elif current_effect == effect:
+                    print(f"    Regra ignorada (é o efeito que acabamos de adicionar): {current_effect} -> {new_effect}")
+        
+        # Aplica as mudanças
+        for old_effect, new_effect in effects_to_change.items():
+            print(f"  Substituindo: {old_effect} -> {new_effect} (+{effect_multipliers[new_effect]})")
+            del active_effects[old_effect]
+            active_effects[new_effect] = effect_multipliers[new_effect]
+        
+        print(f"  Efeitos ativos após aplicar o item {item_name}: {active_effects}")
+        print(f"  Número de efeitos ativos: {len(active_effects)}")
+    
+    print("\nEfeitos finais:")
+    for effect, value in sorted(active_effects.items(), key=lambda x: x[1], reverse=True):
+        print(f"- {effect}: +{value:.2f}")
     
     return active_effects
 
@@ -435,8 +497,6 @@ def find_best_combination(initial_effects: Dict[str, float] = None,
         cost_weight: Não utilizado mais, mantido para compatibilidade
         base_value: Valor base usado no cálculo do lucro
     """
-    # O restante da função permanece igual até a parte de inicialização da população
-    
     # Remove os itens banidos da lista de itens disponíveis
     all_items = list(items.keys())
     banned_items = banned_items or []
@@ -451,7 +511,7 @@ def find_best_combination(initial_effects: Dict[str, float] = None,
     best_combination = []
     best_effects = {}
     best_cost = float('inf')
-    best_profit = float('-inf')  # Novo: rastrear o melhor lucro
+    best_profit = float('-inf')  # Rastrear o melhor lucro
     
     start_time = time.time()
     
@@ -472,10 +532,10 @@ def find_best_combination(initial_effects: Dict[str, float] = None,
         combo = generate_random_combination(available_items, combo_size)
         mult, effects, cost = evaluate_combination(combo, initial_effects)
         profit = (base_value * mult) - cost  # Cálculo do lucro
-        population.append((combo, mult, effects, cost, profit))  # Adicionado profit como 5º elemento
+        population.append((combo, mult, effects, cost, profit))
     
     # Ordena a população pelo lucro
-    population.sort(key=lambda x: x[4], reverse=True)  # Ordena pelo lucro (5º elemento)
+    population.sort(key=lambda x: x[4], reverse=True)
     
     # Acompanha o melhor resultado
     best_combination, best_multiplier, best_effects, best_cost, best_profit = population[0]
@@ -530,7 +590,7 @@ def find_best_combination(initial_effects: Dict[str, float] = None,
                 print(f"Novo melhor: Multiplicador = {best_multiplier:.2f}, Custo = ${best_cost:.2f}, Lucro = ${best_profit:.2f}")
         
         # Substitui a população antiga pela nova
-        population = sorted(new_population, key=lambda x: x[4], reverse=True)  # Ordena pelo lucro
+        population = sorted(new_population, key=lambda x: x[4], reverse=True)
         
         # Introduz diversidade aleatória a cada N gerações
         if gen % 20 == 0 and gen > 0:
@@ -544,7 +604,7 @@ def find_best_combination(initial_effects: Dict[str, float] = None,
                     population[-1] = (random_combo, mult, effects, cost, profit)
             
             # Reordena após adicionar diversidade
-            population.sort(key=lambda x: x[4], reverse=True)  # Ordena pelo lucro
+            population.sort(key=lambda x: x[4], reverse=True)
     
     # Fase final: refina a melhor combinação encontrada
     print("\nRefinando a melhor solução...")
@@ -636,6 +696,8 @@ def optimize(initial_effects=None, time_limit_seconds=30, combo_size=8,
         print(f"{i}. {item} (${item_prices[item]})")
     
     print("\nEfeitos finais ativos:")
+    # Esta é a parte que precisa ser corrigida
+    # Ordenando os efeitos pelo valor multiplicador, em ordem decrescente
     for effect, value in sorted(best_effects.items(), key=lambda x: x[1], reverse=True):
         print(f"- {effect}: +{value:.2f}")
     
@@ -644,13 +706,13 @@ def optimize(initial_effects=None, time_limit_seconds=30, combo_size=8,
 # Exemplo de uso
 if __name__ == "__main__":
     # Parâmetros configuráveis
-    initial_effects = {}  #Efeitos iniciais (opcional) Exemplo: {"Shrinking": 0.60, "Zombifying": 0.58}
-    banned_items = []     # Itens banidos (opcional) Exemplo ["Gasoline", "Horse Semen", "Addy"]
+    initial_effects = { "Energizing": 0.22}  #Efeitos iniciais (opcional) Exemplo: {"Shrinking": 0.60, "Zombifying": 0.58}
+    banned_items = ["Horse Semen"]     # Itens banidos (opcional) Exemplo ["Gasoline", "Horse Semen", "Addy"]
     time_limit = 300       # Tempo limite em segundos
     combo_size = 8        # Tamanho da combinação
     perms_to_test = 40000  # Máximo de permutações a testar
     cost_weight = 0.03     # Peso do custo no fitness (não mais utilizado)
-    base_value = 70      # Valor base para cálculo do lucro
+    base_value = 43      # Valor base para cálculo do lucro
     
     # Executa a otimização
     optimize(
