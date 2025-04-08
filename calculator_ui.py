@@ -8,7 +8,15 @@ import time
 import queue
 from typing import Dict, List, Set, Tuple
 
-# Importing the original file (assuming it's in the same directory)
+# Função para obter o caminho correto dos arquivos
+def resource_path(relative_path):
+    """Retorna o caminho correto para arquivos, seja no desenvolvimento ou no executável."""
+    if hasattr(sys, '_MEIPASS'):
+        # Caminho temporário quando empacotado pelo PyInstaller
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+# Importing the original file
 # You may need to adjust the path if necessary
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -249,9 +257,10 @@ class Schedule1Calculator(tk.Tk):
         self.items_count_label.config(text=f"Quantity: {count}")
     
     def load_image(self, label, path, size=(50, 50)):
-        """Loads an image and displays it in the specified label"""
         try:
-            img = Image.open(path)
+            img_path = resource_path(path)
+            print(f"Tentando carregar imagem de: {img_path}")  # Linha de depuração
+            img = Image.open(img_path)
             img = img.resize(size, Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
             label.config(image=photo)
@@ -260,7 +269,7 @@ class Schedule1Calculator(tk.Tk):
         except Exception as e:
             print(f"Error loading image {path}: {e}")
             return None
-    
+        
     def run_calculation(self):
         """Runs the calculation in a separate thread to avoid freezing the UI"""
         if self.is_calculating:
