@@ -19,19 +19,19 @@ except ImportError:
 
 # Modification in raw materials configuration
 RAW_MATERIALS = {
-    "OG Kush": {"effect": "Calming", "value": 39, "img_path": ""},
-    "Sour Diesel": {"effect": "Refreshing", "value": 40, "img_path": ""},
-    "Green Crack": {"effect": "Energizing", "value": 43, "img_path": ""},
-    "Granddaddy Purple": {"effect": "Sedating", "value": 44, "img_path": ""},
-    "Meth": {"effect": "None", "value": 70, "img_path": ""},
-    "Cocaine": {"effect": "None", "value": 150, "img_path": ""}
+    "OG Kush": {"effect": "Calming", "value": 39, "img_path": "images/og_kush.png"},
+    "Sour Diesel": {"effect": "Refreshing", "value": 40, "img_path": "images/sour_diesel.png"},
+    "Green Crack": {"effect": "Energizing", "value": 43, "img_path": "images/green_crack.png"},
+    "Granddaddy Purple": {"effect": "Sedating", "value": 44, "img_path": "images/granddaddy_purple.png"},
+    "Meth": {"effect": "None", "value": 70, "img_path": "images/meth.png"},
+    "Cocaine": {"effect": "None", "value": 150, "img_path": "images/cocaine.png"}
 }
 
 class Schedule1Calculator(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Schedule 1 Calculator")
-        self.geometry("800x700")
+        self.geometry("850x800")
         self.configure(bg="#f0f0f0")
         
         # Variables
@@ -39,7 +39,6 @@ class Schedule1Calculator(tk.Tk):
         self.combo_size_var = tk.IntVar(value=4)
         self.banned_items_vars = {}
         self.raw_material_img = None
-        self.item_images = {}
         
         # Initialize dictionaries to store results
         self.result_combination = []
@@ -80,7 +79,15 @@ class Schedule1Calculator(tk.Tk):
         raw_mat_dropdown.bind("<<ComboboxSelected>>", self.update_raw_material)
         raw_mat_dropdown.current(0)  # Selects the first item by default
         
-        self.raw_mat_img_label = ttk.Label(raw_mat_frame)
+        # Frame para conter imagem da matéria-prima com fundo próprio
+        self.raw_mat_img_frame = ttk.Frame(raw_mat_frame, style="RawMat.TFrame")
+        self.raw_mat_img_frame.pack(padx=5, pady=5)
+        
+        # Criar estilo com fundo cinza escuro para contraste
+        style = ttk.Style()
+        style.configure("RawMat.TFrame", background="#333333")
+        
+        self.raw_mat_img_label = ttk.Label(self.raw_mat_img_frame, background="#555555")
         self.raw_mat_img_label.pack(padx=5, pady=5)
         
         self.raw_mat_info_label = ttk.Label(raw_mat_frame, text="")
@@ -117,21 +124,20 @@ class Schedule1Calculator(tk.Tk):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Add checkboxes for each item
+        # Add checkboxes for each item without image labels
         for i, item_name in enumerate(sorted(items.keys())):
             var = tk.BooleanVar()
             self.banned_items_vars[item_name] = var
             
+            # Criar um frame para cada item para garantir alinhamento uniforme
             item_frame = ttk.Frame(scrollable_frame)
             item_frame.pack(fill=tk.X, padx=2, pady=2)
             
-            check = ttk.Checkbutton(item_frame, text=item_name, variable=var)
-            check.pack(side=tk.LEFT)
-            
-            # Space for item image (optional)
-            img_label = ttk.Label(item_frame)
-            img_label.pack(side=tk.RIGHT)
-            self.item_images[item_name] = {"label": img_label, "img": None}
+            # Usar checkbutton padrão do Tkinter com parâmetros para remover bordas
+            # e definir anchor=tk.W para alinhar à esquerda
+            check = tk.Checkbutton(item_frame, text=item_name, variable=var, 
+                                highlightthickness=0, bd=0, anchor=tk.W)
+            check.pack(fill=tk.X, padx=5, pady=0)
         
         # Calculate Button with highlighted style
         calc_button_frame = ttk.Frame(input_frame)
@@ -439,13 +445,6 @@ class Schedule1Calculator(tk.Tk):
             # If this raw material is selected, update the image
             if self.raw_material_var.get() == raw_material_name:
                 self.update_raw_material()
-    
-    def set_image_for_item(self, item_name, image_path):
-        """Sets the image for a specific item"""
-        if item_name in self.item_images:
-            if os.path.exists(image_path):
-                photo = self.load_image(self.item_images[item_name]["label"], image_path, size=(30, 30))
-                self.item_images[item_name]["img"] = photo
 
 # Modified version of the optimize function with progress feedback
 def optimize_with_progress(initial_effects=None, time_limit_seconds=30, combo_size=8, 
