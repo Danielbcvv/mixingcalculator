@@ -260,7 +260,8 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
     """
     Aplica os efeitos dos itens selecionados na ordem correta e retorna
     o conjunto final de efeitos ativos e seus multiplicadores.
-    Com limite de 8 efeitos simultâneos.
+    Limita a 8 efeitos simultâneos - quando o limite é atingido, novos itens
+    aplicam apenas suas regras de transformação sem adicionar seu efeito principal.
     
     Args:
         selected_items: Lista de itens na ordem em que serão aplicados
@@ -275,7 +276,7 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
         item = items[item_name]
         effect = item["effect"]
         
-        # Se já temos 8 efeitos e este efeito não está entre eles, não adicionamos
+        # Se já temos o máximo de efeitos e este efeito não está entre eles, não adicionamos
         if len(active_effects) >= MAX_EFFECTS and effect not in active_effects:
             # Não adiciona o efeito, mas ainda aplica as regras de transformação
             pass
@@ -300,7 +301,8 @@ def apply_item_effects(selected_items: List[str], initial_effects: Dict[str, flo
 def debug_apply_item_effects(selected_items: List[str], initial_effects: Dict[str, float] = None) -> Dict[str, float]:
     """
     Versão detalhada da função apply_item_effects que imprime cada passo do processo.
-    Com limite de 8 efeitos simultâneos.
+    Limita a 8 efeitos simultâneos - quando o limite é atingido, novos itens
+    aplicam apenas suas regras de transformação sem adicionar seu efeito principal.
     """
     # Inicializa com os efeitos iniciais, se fornecidos
     active_effects = initial_effects.copy() if initial_effects else {}
@@ -310,17 +312,18 @@ def debug_apply_item_effects(selected_items: List[str], initial_effects: Dict[st
     
     for i, item_name in enumerate(selected_items, 1):
         print(f"\nPasso {i}: Aplicando item '{item_name}'")
+        
         item = items[item_name]
         effect = item["effect"]
         
         # Verifica se já atingimos o limite de efeitos
         if len(active_effects) >= MAX_EFFECTS and effect not in active_effects:
             print(f"  Limite de {MAX_EFFECTS} efeitos atingido! O efeito {effect} não será adicionado.")
-            print(f"  Efeitos atuais: {active_effects}")
+            print(f"  Efeitos atuais: {list(active_effects.keys())}")
         else:
             print(f"  Adicionando efeito: {effect} (+{effect_multipliers[effect]})")
             active_effects[effect] = effect_multipliers[effect]
-            print(f"  Efeitos após adicionar {effect}: {active_effects}")
+            print(f"  Efeitos após adicionar {effect}: {list(active_effects.keys())}")
         
         # Identifica quais regras serão aplicadas
         effects_to_change = {}
@@ -341,7 +344,7 @@ def debug_apply_item_effects(selected_items: List[str], initial_effects: Dict[st
             del active_effects[old_effect]
             active_effects[new_effect] = effect_multipliers[new_effect]
         
-        print(f"  Efeitos ativos após aplicar o item {item_name}: {active_effects}")
+        print(f"  Efeitos ativos após aplicar o item {item_name}: {list(active_effects.keys())}")
         print(f"  Número de efeitos ativos: {len(active_effects)}")
     
     print("\nEfeitos finais:")
@@ -696,8 +699,6 @@ def optimize(initial_effects=None, time_limit_seconds=30, combo_size=8,
         print(f"{i}. {item} (${item_prices[item]})")
     
     print("\nEfeitos finais ativos:")
-    # Esta é a parte que precisa ser corrigida
-    # Ordenando os efeitos pelo valor multiplicador, em ordem decrescente
     for effect, value in sorted(best_effects.items(), key=lambda x: x[1], reverse=True):
         print(f"- {effect}: +{value:.2f}")
     

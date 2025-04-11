@@ -27,10 +27,10 @@ except ImportError:
 
 # Modification in raw materials configuration
 RAW_MATERIALS = {
-    "OG Kush": {"effect": "Calming", "value": 39, "img_path": "images/og_kush.png"},
-    "Sour Diesel": {"effect": "Refreshing", "value": 40, "img_path": "images/sour_diesel.png"},
-    "Green Crack": {"effect": "Energizing", "value": 43, "img_path": "images/green_crack.png"},
-    "Granddaddy Purple": {"effect": "Sedating", "value": 44, "img_path": "images/granddaddy_purple.png"},
+    "OG Kush": {"effect": "Calming", "value": 35, "img_path": "images/og_kush.png"},
+    "Sour Diesel": {"effect": "Refreshing", "value": 35, "img_path": "images/sour_diesel.png"},
+    "Green Crack": {"effect": "Energizing", "value": 35, "img_path": "images/green_crack.png"},
+    "Granddaddy Purple": {"effect": "Sedating", "value": 35, "img_path": "images/granddaddy_purple.png"},
     "Meth": {"effect": "None", "value": 70, "img_path": "images/meth.png"},
     "Cocaine": {"effect": "None", "value": 150, "img_path": "images/cocaine.png"}
 }
@@ -54,6 +54,7 @@ class Schedule1Calculator(tk.Tk):
         self.result_effects = {}
         self.result_cost = 0.0
         self.result_profit = 0.0
+        self.result_sell_price = 0.0
         
         # Queue for communication between threads
         self.progress_queue = queue.Queue()
@@ -211,6 +212,10 @@ class Schedule1Calculator(tk.Tk):
         self.profit_label = ttk.Label(nums_frame, text="Estimated Profit: -")
         self.profit_label.pack(anchor=tk.W, padx=5, pady=2)
         
+        # Adicionar label para Sell Price
+        self.sell_price_label = ttk.Label(nums_frame, text="Sell Price: -")
+        self.sell_price_label.pack(anchor=tk.W, padx=5, pady=2)
+        
         # Frame for item list
         items_list_frame = ttk.LabelFrame(self.result_frame, text="Best Combination")
         items_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -290,6 +295,7 @@ class Schedule1Calculator(tk.Tk):
         self.mult_label.config(text="Multiplier: -")
         self.cost_label.config(text="Total Cost: -")
         self.profit_label.config(text="Estimated Profit: -")
+        self.sell_price_label.config(text="Sell Price: -")
         
         # Get parameters
         selected_material = self.raw_material_var.get()
@@ -408,6 +414,9 @@ class Schedule1Calculator(tk.Tk):
             # Extract results
             self.result_combination, self.result_multiplier, self.result_effects, self.result_cost, self.result_profit = result
             
+            # Calcular o Sell Price (base_value * multiplier)
+            self.result_sell_price = base_value * self.result_multiplier
+            
             # Inform that the calculation is complete
             self.progress_queue.put(("progress", (95, "Finalizing and processing results")))
             time.sleep(0.5)  # Small pause for visualization
@@ -432,7 +441,8 @@ class Schedule1Calculator(tk.Tk):
         # Update numerical labels
         self.mult_label.config(text=f"Multiplier: {self.result_multiplier:.2f}")
         self.cost_label.config(text=f"Total Cost: ${self.result_cost:.2f}")
-        self.profit_label.config(text=f"Estimated Profit: ${self.result_profit:.2f}")
+        self.profit_label.config(text=f"Estimated Profit: ${round(self.result_profit)}")
+        self.sell_price_label.config(text=f"Sell Price: ${round(self.result_sell_price)}")
         
         # Update items listbox
         self.items_listbox.delete(0, tk.END)
