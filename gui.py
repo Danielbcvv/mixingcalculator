@@ -1,3 +1,7 @@
+"""
+Interface gráfica do usuário para o Schedule 1 Calculator.
+"""
+
 import tkinter as tk
 from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
@@ -6,49 +10,32 @@ import sys
 import threading
 import time
 import queue
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple, Optional, Callable
 
-# Função para obter o caminho correto dos arquivos
-def resource_path(relative_path):
-    """Retorna o caminho correto para arquivos, seja no desenvolvimento ou no executável."""
-    if hasattr(sys, '_MEIPASS'):
-        # Caminho temporário quando empacotado pelo PyInstaller
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
-
-# Importing the original file
-# You may need to adjust the path if necessary
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-try:
-    from schedule1 import optimize, items, effect_multipliers, item_prices
-except ImportError:
-    print("Error importing the main module. Ensure the 'schedule1.py' file is in the same directory.")
-    sys.exit(1)
-
-# Modification in raw materials configuration
-RAW_MATERIALS = {
-    "OG Kush": {"effect": "Calming", "value": 35, "img_path": "images/og_kush.png"},
-    "Sour Diesel": {"effect": "Refreshing", "value": 35, "img_path": "images/sour_diesel.png"},
-    "Green Crack": {"effect": "Energizing", "value": 35, "img_path": "images/green_crack.png"},
-    "Granddaddy Purple": {"effect": "Sedating", "value": 35, "img_path": "images/granddaddy_purple.png"},
-    "Meth": {"effect": "None", "value": 70, "img_path": "images/meth.png"},
-    "Cocaine": {"effect": "None", "value": 150, "img_path": "images/cocaine.png"}
-}
+# Importações dos módulos locais
+from effects import effect_multipliers
+from items import items, item_prices, get_all_items
+from raw_materials import RAW_MATERIALS
+from utils import resource_path
+from optimizer import optimize
 
 class Schedule1Calculator(tk.Tk):
+    """Interface gráfica para o Schedule 1 Calculator."""
+    
     def __init__(self):
+        """Inicializa a interface gráfica."""
         super().__init__()
         self.title("Schedule 1 Calculator")
         self.geometry("850x800")
         self.configure(bg="#f0f0f0")
         
-        # Variables
+        # Variáveis
         self.raw_material_var = tk.StringVar()
         self.combo_size_var = tk.IntVar(value=4)
         self.banned_items_vars = {}
         self.raw_material_img = None
         
-        # Initialize dictionaries to store results
+        # Inicializa dicionários para armazenar resultados
         self.result_combination = []
         self.result_multiplier = 0.0
         self.result_effects = {}
@@ -56,37 +43,57 @@ class Schedule1Calculator(tk.Tk):
         self.result_profit = 0.0
         self.result_sell_price = 0.0
         
-        # Queue for communication between threads
+        # Fila para comunicação entre threads
         self.progress_queue = queue.Queue()
         self.is_calculating = False
         
         self.create_widgets()
         
-        # Start monitoring the progress queue
+        # Inicia monitoramento da fila de progresso
         self.monitor_progress_queue()
     
     def create_widgets(self):
-        # Main frame divided into two columns
+        """Cria os widgets da interface gráfica."""
+        # Frame principal dividido em duas colunas
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Left column (input parameters)
+        # Coluna esquerda (parâmetros de entrada)
         input_frame = ttk.LabelFrame(main_frame, text="Parameters")
         input_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Right column (results)
+        # Coluna direita (resultados)
         self.result_frame = ttk.LabelFrame(main_frame, text="Results")
         self.result_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Raw Material Section
-        raw_mat_frame = ttk.LabelFrame(input_frame, text="Raw Material")
+        # Seção de Matéria-Prima
+        self._create_raw_material_section(input_frame)
+        
+        # Seção de Quantidade de Itens
+        self._create_items_count_section(input_frame)
+        
+        # Seção de Itens Banidos
+        self._create_banned_items_section(input_frame)
+        
+        # Botões de Calcular e Cancelar
+        self._create_action_buttons(input_frame)
+        
+        # Inicializa a exibição da matéria-prima
+        self.update_raw_material()
+        
+        # Prepara o frame de resultados
+        self.prepare_result_frame()
+    
+    def _create_raw_material_section(self, parent_frame):
+        """Cria a seção de matéria-prima."""
+        raw_mat_frame = ttk.LabelFrame(parent_frame, text="Raw Material")
         raw_mat_frame.pack(fill=tk.X, padx=5, pady=5)
         
         raw_mat_dropdown = ttk.Combobox(raw_mat_frame, textvariable=self.raw_material_var, 
-                                         values=list(RAW_MATERIALS.keys()), state="readonly")
+                                       values=list(RAW_MATERIALS.keys()), state="readonly")
         raw_mat_dropdown.pack(fill=tk.X, padx=5, pady=5)
         raw_mat_dropdown.bind("<<ComboboxSelected>>", self.update_raw_material)
-        raw_mat_dropdown.current(0)  # Selects the first item by default
+        raw_mat_dropdown.current(0)  # Seleciona o primeiro item por padrão
         
         # Frame para conter imagem da matéria-prima com fundo próprio
         self.raw_mat_img_frame = ttk.Frame(raw_mat_frame, style="RawMat.TFrame")
@@ -101,9 +108,10 @@ class Schedule1Calculator(tk.Tk):
         
         self.raw_mat_info_label = ttk.Label(raw_mat_frame, text="")
         self.raw_mat_info_label.pack(padx=5, pady=5)
-        
-        # Item Quantity Section
-        items_count_frame = ttk.LabelFrame(input_frame, text="Item Quantity")
+    
+    def _create_items_count_section(self, parent_frame):
+        """Cria a seção de quantidade de itens."""
+        items_count_frame = ttk.LabelFrame(parent_frame, text="Item Quantity")
         items_count_frame.pack(fill=tk.X, padx=5, pady=5)
         
         items_scale = ttk.Scale(items_count_frame, from_=1, to=8, orient=tk.HORIZONTAL,
@@ -112,12 +120,13 @@ class Schedule1Calculator(tk.Tk):
         
         self.items_count_label = ttk.Label(items_count_frame, text="Quantity: 4")
         self.items_count_label.pack(padx=5, pady=5)
-        
-        # Banned Items Section
-        banned_items_frame = ttk.LabelFrame(input_frame, text="Banned Items")
+    
+    def _create_banned_items_section(self, parent_frame):
+        """Cria a seção de itens banidos."""
+        banned_items_frame = ttk.LabelFrame(parent_frame, text="Banned Items")
         banned_items_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Create a canvas with scrollbar for banned items checkboxes
+        # Cria um canvas com barra de rolagem para checkboxes de itens banidos
         canvas = tk.Canvas(banned_items_frame)
         scrollbar = ttk.Scrollbar(banned_items_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -133,7 +142,7 @@ class Schedule1Calculator(tk.Tk):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Add checkboxes for each item without image labels
+        # Adiciona checkboxes para cada item sem rótulos de imagem
         for i, item_name in enumerate(sorted(items.keys())):
             var = tk.BooleanVar()
             self.banned_items_vars[item_name] = var
@@ -145,23 +154,24 @@ class Schedule1Calculator(tk.Tk):
             # Usar checkbutton padrão do Tkinter com parâmetros para remover bordas
             # e definir anchor=tk.W para alinhar à esquerda
             check = tk.Checkbutton(item_frame, text=item_name, variable=var, 
-                                highlightthickness=0, bd=0, anchor=tk.W)
+                                  highlightthickness=0, bd=0, anchor=tk.W)
             check.pack(fill=tk.X, padx=5, pady=0)
-        
-        # Calculate Button with highlighted style
-        calc_button_frame = ttk.Frame(input_frame)
+    
+    def _create_action_buttons(self, parent_frame):
+        """Cria os botões de ação (Calcular e Cancelar)."""
+        calc_button_frame = ttk.Frame(parent_frame)
         calc_button_frame.pack(fill=tk.X, padx=5, pady=10)
         
-        # Calculate Button with better highlight
+        # Botão Calcular com melhor destaque
         self.calc_button = tk.Button(calc_button_frame, text="CALCULATE", 
-                               command=self.run_calculation,
-                               bg="#4CAF50", fg="white",
-                               font=("Arial", 12, "bold"),
-                               relief=tk.RAISED,
-                               padx=20, pady=10)
+                                   command=self.run_calculation,
+                                   bg="#4CAF50", fg="white",
+                                   font=("Arial", 12, "bold"),
+                                   relief=tk.RAISED,
+                                   padx=20, pady=10)
         self.calc_button.pack(fill=tk.X, padx=5, pady=5)
         
-        # Cancel Button (initially disabled)
+        # Botão Cancelar (inicialmente desabilitado)
         self.cancel_button = tk.Button(calc_button_frame, text="CANCEL", 
                                      command=self.cancel_calculation,
                                      bg="#f44336", fg="white",
@@ -170,20 +180,14 @@ class Schedule1Calculator(tk.Tk):
                                      padx=20, pady=10,
                                      state=tk.DISABLED)
         self.cancel_button.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Initialize raw material display
-        self.update_raw_material()
-        
-        # Prepare the results frame
-        self.prepare_result_frame()
     
     def prepare_result_frame(self):
-        """Prepares the results frame with empty widgets"""
-        # Label to show calculation status
+        """Prepara o frame de resultados com widgets vazios."""
+        # Rótulo para mostrar o status do cálculo
         self.calc_status_label = ttk.Label(self.result_frame, text="Waiting for calculation...")
         self.calc_status_label.pack(fill=tk.X, padx=5, pady=5)
         
-        # Progress bar
+        # Barra de progresso
         self.progress_frame = ttk.Frame(self.result_frame)
         self.progress_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -194,15 +198,15 @@ class Schedule1Calculator(tk.Tk):
         self.progress_text = ttk.Label(self.progress_frame, text="0%")
         self.progress_text.pack(padx=5, pady=2)
         
-        # Detailed progress status
+        # Status detalhado do progresso
         self.progress_details = ttk.Label(self.progress_frame, text="")
         self.progress_details.pack(padx=5, pady=2)
         
-        # Frame for numerical results
+        # Frame para resultados numéricos
         nums_frame = ttk.Frame(self.result_frame)
         nums_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        # Labels for numerical results
+        # Rótulos para resultados numéricos
         self.mult_label = ttk.Label(nums_frame, text="Multiplier: -")
         self.mult_label.pack(anchor=tk.W, padx=5, pady=2)
         
@@ -212,35 +216,35 @@ class Schedule1Calculator(tk.Tk):
         self.profit_label = ttk.Label(nums_frame, text="Estimated Profit: -")
         self.profit_label.pack(anchor=tk.W, padx=5, pady=2)
         
-        # Adicionar label para Sell Price
+        # Adicionar rótulo para Sell Price
         self.sell_price_label = ttk.Label(nums_frame, text="Sell Price: -")
         self.sell_price_label.pack(anchor=tk.W, padx=5, pady=2)
         
-        # Frame for item list
+        # Frame para lista de itens
         items_list_frame = ttk.LabelFrame(self.result_frame, text="Best Combination")
         items_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Listbox to display items in the combination
+        # Listbox para exibir itens na combinação
         self.items_listbox = tk.Listbox(items_list_frame)
         self.items_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Frame for effects
+        # Frame para efeitos
         effects_frame = ttk.LabelFrame(self.result_frame, text="Active Effects")
         effects_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Listbox to display effects
+        # Listbox para exibir efeitos
         self.effects_listbox = tk.Listbox(effects_frame)
         self.effects_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
     def update_raw_material(self, event=None):
-        """Updates the information of the selected raw material"""
+        """Atualiza as informações da matéria-prima selecionada."""
         selected = self.raw_material_var.get()
         if selected in RAW_MATERIALS:
             material_info = RAW_MATERIALS[selected]
             effect_name = material_info["effect"]
             base_value = material_info["value"]
             
-            # Check if the effect is "None" or exists in multipliers
+            # Verifica se o efeito é "None" ou existe nos multiplicadores
             if effect_name == "None":
                 effect_value = 0
                 info_text = f"Effect: None\nBase Value: ${base_value:.2f}"
@@ -250,18 +254,20 @@ class Schedule1Calculator(tk.Tk):
             
             self.raw_mat_info_label.config(text=info_text)
             
-            # Update the image if available
-            if material_info["img_path"] and os.path.exists(material_info["img_path"]):
-                self.load_image(self.raw_mat_img_label, material_info["img_path"], size=(100, 100))
+            # Atualiza a imagem se disponível
+            img_path = material_info["img_path"]
+            if img_path and os.path.exists(img_path):
+                self.load_image(self.raw_mat_img_label, img_path, size=(100, 100))
             else:
                 self.raw_mat_img_label.config(image="")
     
     def update_combo_size(self, event=None):
-        """Updates the item quantity label"""
+        """Atualiza o rótulo de quantidade de itens."""
         count = self.combo_size_var.get()
         self.items_count_label.config(text=f"Quantity: {count}")
     
     def load_image(self, label, path, size=(50, 50)):
+        """Carrega uma imagem e a exibe em um label."""
         try:
             img_path = resource_path(path)
             print(f"Tentando carregar imagem de: {img_path}")  # Linha de depuração
@@ -269,23 +275,23 @@ class Schedule1Calculator(tk.Tk):
             img = img.resize(size, Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
             label.config(image=photo)
-            label.image = photo  # Keeps a reference
+            label.image = photo  # Mantém uma referência
             return photo
         except Exception as e:
-            print(f"Error loading image {path}: {e}")
+            print(f"Erro ao carregar imagem {path}: {e}")
             return None
         
     def run_calculation(self):
-        """Runs the calculation in a separate thread to avoid freezing the UI"""
+        """Executa o cálculo em uma thread separada para evitar congelar a UI."""
         if self.is_calculating:
-            return  # Avoids multiple clicks
+            return  # Evita múltiplos cliques
         
-        # Mark as calculating and update the UI
+        # Marca como calculando e atualiza a UI
         self.is_calculating = True
         self.calc_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         
-        # Clear previous results
+        # Limpa resultados anteriores
         self.calc_status_label.config(text="Starting calculation...")
         self.progress_bar['value'] = 0
         self.progress_text.config(text="0%")
@@ -297,47 +303,47 @@ class Schedule1Calculator(tk.Tk):
         self.profit_label.config(text="Estimated Profit: -")
         self.sell_price_label.config(text="Sell Price: -")
         
-        # Get parameters
+        # Obtém parâmetros
         selected_material = self.raw_material_var.get()
         material_info = RAW_MATERIALS[selected_material]
         
-        # Check if the effect is "None"
+        # Verifica se o efeito é "None"
         if material_info["effect"] == "None":
-            initial_effects = {}  # No initial effects
+            initial_effects = {}  # Sem efeitos iniciais
         else:
             initial_effects = {material_info["effect"]: effect_multipliers[material_info["effect"]]}
         
         base_value = material_info["value"]
         combo_size = self.combo_size_var.get()
         
-        # Get banned items
+        # Obtém itens banidos
         banned_items = [item for item, var in self.banned_items_vars.items() if var.get()]
         
-        # Update initial status
+        # Atualiza status inicial
         self.calc_status_label.config(text=f"Calculating with {selected_material}...")
         self.progress_details.config(text=f"Searching for the best combination of {combo_size} items...")
-        self.update()  # Force UI update before starting the calculation
+        self.update()  # Força atualização da UI antes de iniciar o cálculo
         
-        # Start the calculation in a separate thread
+        # Inicia o cálculo em uma thread separada
         self.calculation_thread = threading.Thread(
             target=self.perform_calculation, 
             args=(initial_effects, banned_items, combo_size, base_value)
         )
-        self.calculation_thread.daemon = True  # Terminates the thread when the main program ends
+        self.calculation_thread.daemon = True  # Termina a thread quando o programa principal termina
         self.calculation_thread.start()
     
     def cancel_calculation(self):
-        """Cancels the ongoing calculation"""
+        """Cancela o cálculo em andamento."""
         if self.is_calculating:
-            # Add a cancellation signal to the progress queue
+            # Adiciona um sinal de cancelamento à fila de progresso
             self.progress_queue.put(("cancel", None))
             self.calc_status_label.config(text="Canceling calculation...")
             self.progress_details.config(text="Please wait, finishing operations...")
     
     def monitor_progress_queue(self):
-        """Monitors the progress queue and updates the UI"""
+        """Monitora a fila de progresso e atualiza a UI."""
         try:
-            # Check if there are new items in the queue
+            # Verifica se há novos itens na fila
             while not self.progress_queue.empty():
                 msg_type, data = self.progress_queue.get_nowait()
                 
@@ -358,7 +364,7 @@ class Schedule1Calculator(tk.Tk):
                     self.progress_bar['value'] = 100
                     self.progress_text.config(text="100%")
                     self.calc_status_label.config(text="Calculation completed!")
-                    # Update results
+                    # Atualiza resultados
                     self.update_results()
                 
                 elif msg_type == "error":
@@ -378,13 +384,13 @@ class Schedule1Calculator(tk.Tk):
         except Exception as e:
             print(f"Error monitoring progress queue: {e}")
         
-        # Schedule the next check
+        # Agenda a próxima verificação
         self.after(100, self.monitor_progress_queue)
     
     def perform_calculation(self, initial_effects, banned_items, combo_size, base_value):
-        """Performs the calculation and updates the UI with the results"""
+        """Executa o cálculo e atualiza a UI com os resultados."""
         try:
-            # Inform the start of the calculation
+            # Informa o início do cálculo
             self.progress_queue.put(("status", "Initializing optimizer..."))
             self.progress_queue.put(("progress", (5, "Preparing calculation environment")))
             
@@ -394,32 +400,32 @@ class Schedule1Calculator(tk.Tk):
             print(f"Combination size: {combo_size}")
             print(f"Base value: {base_value}")
             
-            # Execute the modified optimization function with progress feedback
-            result = optimize_with_progress(
+            # Executa a função de otimização modificada com feedback de progresso
+            result = optimize(
                 initial_effects=initial_effects,
                 banned_items=banned_items,
-                time_limit_seconds=60,  # Adjust as needed
+                time_limit_seconds=60,  # Ajuste conforme necessário
                 combo_size=combo_size,
-                max_perms_to_test=5000,  # Adjust as needed
+                max_perms_to_test=5000,  # Ajuste conforme necessário
                 base_value=base_value,
                 progress_callback=self.update_progress,
-                # Do not display console output
+                # Não exibe saída no console
                 verbose=False
             )
             
-            # Check if the calculation was canceled
+            # Verifica se o cálculo foi cancelado
             if not self.is_calculating:
                 return
             
-            # Extract results
+            # Extrai resultados
             self.result_combination, self.result_multiplier, self.result_effects, self.result_cost, self.result_profit = result
             
-            # Calcular o Sell Price (base_value * multiplier)
+            # Calcula o Sell Price (base_value * multiplier)
             self.result_sell_price = base_value * self.result_multiplier
             
-            # Inform that the calculation is complete
+            # Informa que o cálculo está completo
             self.progress_queue.put(("progress", (95, "Finalizing and processing results")))
-            time.sleep(0.5)  # Small pause for visualization
+            time.sleep(0.5)  # Pequena pausa para visualização
             self.progress_queue.put(("complete", None))
             
         except Exception as e:
@@ -427,134 +433,40 @@ class Schedule1Calculator(tk.Tk):
             self.progress_queue.put(("error", str(e)))
     
     def update_progress(self, percentage, message=None):
-        """Callback to update calculation progress"""
-        # Check if the calculation was canceled
+        """Callback para atualizar o progresso do cálculo."""
+        # Verifica se o cálculo foi cancelado
         if not self.is_calculating:
-            return False  # Return False to indicate it should stop
+            return False  # Retorna False para indicar que deve parar
         
-        # Send progress to the queue
+        # Envia progresso para a fila
         self.progress_queue.put(("progress", (percentage, message)))
-        return True  # Continue the calculation
+        return True  # Continua o cálculo
     
     def update_results(self):
-        """Updates the UI with the calculation results"""
-        # Update numerical labels
+        """Atualiza a UI com os resultados do cálculo."""
+        # Atualiza rótulos numéricos
         self.mult_label.config(text=f"Multiplier: {self.result_multiplier:.2f}")
         self.cost_label.config(text=f"Total Cost: ${self.result_cost:.2f}")
         self.profit_label.config(text=f"Estimated Profit: ${round(self.result_profit)}")
         self.sell_price_label.config(text=f"Sell Price: ${round(self.result_sell_price)}")
         
-        # Update items listbox
+        # Atualiza listbox de itens
         self.items_listbox.delete(0, tk.END)
         for i, item in enumerate(self.result_combination, 1):
             self.items_listbox.insert(tk.END, f"{i}. {item} (${item_prices[item]})")
         
-        # Update effects listbox
+        # Atualiza listbox de efeitos
         self.effects_listbox.delete(0, tk.END)
         for effect, value in sorted(self.result_effects.items(), key=lambda x: x[1], reverse=True):
             self.effects_listbox.insert(tk.END, f"{effect}: +{value:.2f}")
         
-        # Update final status
+        # Atualiza status final
         self.progress_details.config(text=f"Analyzed {len(self.result_combination)} item combinations.")
 
     def set_image_for_raw_material(self, raw_material_name, image_path):
-        """Sets the image for a specific raw material"""
+        """Define a imagem para uma matéria-prima específica."""
         if raw_material_name in RAW_MATERIALS:
             RAW_MATERIALS[raw_material_name]["img_path"] = image_path
-            # If this raw material is selected, update the image
+            # Se esta matéria-prima estiver selecionada, atualiza a imagem
             if self.raw_material_var.get() == raw_material_name:
                 self.update_raw_material()
-
-# Modified version of the optimize function with progress feedback
-def optimize_with_progress(initial_effects=None, time_limit_seconds=30, combo_size=8, 
-                         max_perms_to_test=5000, banned_items=None, cost_weight=0.3, 
-                         base_value=100, verbose=True, progress_callback=None):
-    """
-    Version of the optimize function that provides progress feedback
-    and allows cancellation
-    """
-    # Store the original stdout
-    original_stdout = sys.stdout
-    
-    if not verbose:
-        # Redirect to null
-        sys.stdout = open(os.devnull, 'w')
-    
-    try:
-        # Implement progress monitoring
-        start_time = time.time()
-        canceled = False
-        
-        # Report initial progress
-        if progress_callback:
-            if not progress_callback(10, "Initializing optimization algorithm"):
-                canceled = True
-                return [], 0.0, {}, 0.0, 0.0
-        
-        # Filter banned items
-        available_items = {name: props for name, props in items.items() 
-                          if banned_items is None or name not in banned_items}
-        
-        if progress_callback:
-            if not progress_callback(15, f"Analyzing {len(available_items)} available items"):
-                canceled = True
-                return [], 0.0, {}, 0.0, 0.0
-        
-        # Generate possible combinations (simplified simulation for monitoring)
-        total_items = len(available_items)
-        total_combinations = min(max_perms_to_test, sum(1 for _ in range(total_items)))
-        
-        # Simulate progress during the main calculation phase
-        if progress_callback:
-            progress_updates = [
-                (20, "Generating possible combinations"),
-                (30, "Calculating effects for each combination"),
-                (50, f"Analyzing {total_combinations} possible combinations"),
-                (70, "Calculating effect multipliers"),
-                (80, "Calculating combination profitability"),
-                (90, "Finding the best combination")
-            ]
-            
-            for progress, message in progress_updates:
-                # Simulate work being done
-                time.sleep(0.5)
-                
-                # Update progress
-                if not progress_callback(progress, message):
-                    canceled = True
-                    return [], 0.0, {}, 0.0, 0.0
-                
-                # Check if time limit is exceeded
-                if time.time() - start_time > time_limit_seconds:
-                    if progress_callback:
-                        progress_callback(progress, "Time limit reached, finalizing calculations")
-                    break
-        
-        # Call the original function if not canceled
-        if not canceled:
-            result = optimize(
-                initial_effects=initial_effects,
-                time_limit_seconds=max(1, time_limit_seconds - (time.time() - start_time)),
-                combo_size=combo_size,
-                max_perms_to_test=max_perms_to_test,
-                banned_items=banned_items,
-                cost_weight=cost_weight,
-                base_value=base_value
-            )
-            return result
-        else:
-            return [], 0.0, {}, 0.0, 0.0
-        
-    finally:
-        # Restore original stdout
-        if not verbose:
-            sys.stdout.close()
-            sys.stdout = original_stdout
-
-# Replace the original function with the wrapper
-import schedule1
-schedule1.optimize = optimize_with_progress
-
-if __name__ == "__main__":
-    app = Schedule1Calculator()
-    app.mainloop()
