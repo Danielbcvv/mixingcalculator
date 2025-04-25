@@ -301,7 +301,7 @@ def find_best_combination(
     
     # Acompanha o melhor resultado
     best_combination, best_multiplier, best_effects, best_cost, best_profit = population[0]
-    print(f"Inicial: Multiplicador = {best_multiplier:.2f}, Custo = ${best_cost:.2f}, Lucro = ${best_profit:.2f}")
+    print(f"Inicial: Multiplicador = {best_multiplier:.2f}, Cost = ${best_cost:.2f}, Profit = ${best_profit:.2f}")
     
     # Reportar progresso (20%)
     if progress_callback:
@@ -318,12 +318,12 @@ def find_best_combination(
         # Reportar progresso a cada 100 gerações (20% a 70%)
         if progress_callback and gen % 100 == 0:
             progress = 20 + min(50, int(50 * gen / num_generations))
-            if not progress_callback(progress, f"Geração {gen}: Melhor multiplicador = {best_multiplier:.2f}"):
+            if not progress_callback(progress, f"Generation {gen}: Best Mutiplier = {best_multiplier:.2f}"):
                 return [], 0.0, {}, 0.0, 0.0
         
         # Exibe progresso a cada 10 gerações
         if gen % 10 == 0:
-            print(f"Geração {gen}/{num_generations}: Melhor = {best_multiplier:.2f}, Custo = ${best_cost:.2f}, Lucro = ${best_profit:.2f}")
+            print(f"Generation {gen}/{num_generations}: Best = {best_multiplier:.2f}, Cost = ${best_cost:.2f}, Profit = ${best_profit:.2f}")
         
         # Cria nova população
         new_population = []
